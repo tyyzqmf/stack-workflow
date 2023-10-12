@@ -92,14 +92,6 @@ export class CSDCStackWorkflow extends Construct {
       role: workflowFunctionRole,
       architecture: Architecture.X86_64,
       timeout: Duration.seconds(15),
-      bundling: {
-        externalModules: [
-          '@aws-lambda-powertools/logger',
-          '@aws-sdk/client-cloudformation',
-          '@aws-sdk/client-s3',
-          'jsonpath-plus',
-        ],
-      },
     });
     const func = defaults.buildLambdaFunction(scope, {
       existingLambdaObj: nodejsFunc,

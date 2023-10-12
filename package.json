@@ -26,8 +26,7 @@
     "unbump": "npx projen unbump",
     "upgrade": "npx projen upgrade",
     "watch": "npx projen watch",
-    "projen": "npx projen",
-    "integ": "cdk deploy --app=\"./lib/integ.default.js --require-approval never\""
+    "projen": "npx projen"
   },
   "author": {
     "name": "mingfeiq",

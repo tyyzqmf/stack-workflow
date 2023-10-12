@@ -55,5 +55,4 @@ const project = new awscdk.AwsCdkConstructLibrary({
     'AWS CloudFormation',
   ],
 });
-project.setScript('integ', 'cdk deploy --app="./lib/integ.default.js --require-approval never"');
 project.synth();
