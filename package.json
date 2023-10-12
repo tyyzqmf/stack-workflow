@@ -1,5 +1,6 @@
 {
-  "name": "stack-workflow",
+  "name": "@tyyzqmf/stack-workflow",
+  "description": "A CDK construct library that creates a workflow to run stacks",
   "repository": {
     "type": "git",
     "url": "https://github.com/tyyzqmf/stack-workflow.git"
@@ -11,7 +12,6 @@
     "compat": "npx projen compat",
     "compile": "npx projen compile",
     "default": "npx projen default",
-    "docgen": "npx projen docgen",
     "eject": "npx projen eject",
     "eslint": "npx projen eslint",
     "package": "npx projen package",
@@ -26,7 +26,8 @@
     "unbump": "npx projen unbump",
     "upgrade": "npx projen upgrade",
     "watch": "npx projen watch",
-    "projen": "npx projen"
+    "projen": "npx projen",
+    "integ": "cdk deploy --app=\"./lib/integ.default.js --require-approval never\""
   },
   "author": {
     "name": "mingfeiq",
@@ -35,10 +36,10 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.5",
-    "@types/node": "^16",
+    "@types/node": "^18",
     "@typescript-eslint/eslint-plugin": "^6",
     "@typescript-eslint/parser": "^6",
-    "aws-cdk-lib": "2.1.0",
+    "aws-cdk-lib": "2.100.0",
     "constructs": "10.0.5",
     "eslint": "^8",
     "eslint-import-resolver-node": "^0.3.9",
@@ -48,7 +49,6 @@
     "jest-junit": "^15",
     "jsii": "~5.0.0",
     "jsii-diff": "^1.90.0",
-    "jsii-docgen": "^9.2.2",
     "jsii-pacmak": "^1.90.0",
     "jsii-rosetta": "~5.0.0",
     "npm-check-updates": "^16",
@@ -59,12 +59,34 @@
     "typescript": "^5.2.2"
   },
   "peerDependencies": {
-    "aws-cdk-lib": "^2.1.0",
+    "aws-cdk-lib": "^2.100.0",
     "constructs": "^10.0.5"
   },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^1.14.0",
+    "@aws-sdk/client-cloudformation": "^3.405.0",
+    "@aws-sdk/client-s3": "^3.405.0",
+    "@aws-solutions-constructs/core": "^2.44.0",
+    "jsonpath-plus": "^7.2.0"
+  },
+  "bundledDependencies": [
+    "@aws-lambda-powertools/logger",
+    "@aws-sdk/client-cloudformation",
+    "@aws-sdk/client-s3",
+    "jsonpath-plus"
+  ],
+  "pnpm": {},
   "keywords": [
+    "AWS CloudFormation",
+    "AWS Solutions Constructs",
+    "AWS Step Functions",
+    "aws",
+    "awscdk",
     "cdk"
   ],
+  "engines": {
+    "node": ">= 18.17.0"
+  },
   "main": "lib/index.js",
   "license": "Apache-2.0",
   "version": "0.0.0",
