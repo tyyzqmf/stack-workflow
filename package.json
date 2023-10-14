@@ -1,5 +1,5 @@
 {
-  "name": "@tyyzqmf/stack-workflow",
+  "name": "stack-workflow",
   "description": "A CDK construct library that creates a workflow to run stacks",
   "repository": {
     "type": "git",
