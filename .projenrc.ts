@@ -10,7 +10,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   authorAddress: 'mingfeiq@amazon.com',
   defaultReleaseBranch: 'main',
   jsiiVersion: '~5.0.0',
-  name: '@tyyzqmf/stack-workflow',
+  name: 'stack-workflow',
   description: 'A CDK construct library that creates a workflow to run stacks',
   license: 'Apache-2.0',
   projenrcTs: true,
