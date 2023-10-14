@@ -12,69 +12,114 @@
  */
 
 import { Logger } from '@aws-lambda-powertools/logger';
-import { Parameter, Output, CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation';
+import { Parameter, Output, CloudFormationClient, DescribeStacksCommand, Tag } from '@aws-sdk/client-cloudformation';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { JSONPath } from 'jsonpath-plus';
 
 const logger = new Logger();
+const callbackBucketName = process.env.CALLBACK_BUCKET_NAME;
 
-export interface WorkFlowStack {
-  Name: string;
-  Type: string;
-  Data: SfnStackEvent;
+export enum WorkFlowEventType {
+  INITIAL = 'Initial',
+  CALLSELF = 'CallSelf',
 }
 
-export interface SfnStackEvent {
-  readonly Input: SfnStackInput;
-  readonly Callback: SfnStackCallback;
+export interface WorkFlowInitialEvent {
+  Type: WorkFlowEventType;
+  readonly Data: {
+    readonly ExecutionName: string;
+    readonly Input: {
+      readonly value: WorkflowOriginInput;
+    };
+  };
 }
 
-interface SfnStackInput {
-  readonly Region: string;
-  readonly Action: string;
-  readonly StackName: string;
-  readonly TemplateURL: string;
-  readonly Parameters: Parameter[];
+export interface StackData {
+  ExecutionName: string;
+  Input: {
+    Region: string;
+    Action: string;
+    StackName: string;
+    TemplateURL: string;
+    Parameters: Parameter[];
+    Tags?: Tag[];
+  };
 }
 
-interface SfnStackCallback {
-  readonly BucketName: string;
-  readonly BucketPrefix: string;
+export interface WorkflowOriginInput {
+  Type: WorkflowStateType;
 }
 
-export const handler = async (event: any): Promise<any> => {
+export interface WorkflowState extends WorkflowOriginInput {
+  ExecutionName: string;
+  Data?: StackData;
+  Branches?: WorkflowParallelBranch[];
+  End?: boolean;
+  Next?: string;
+}
+
+export interface WorkflowCallSelfState extends WorkflowOriginInput {
+  Type: WorkflowStateType.CALL_SELF;
+  Data: WorkflowState;
+  Token: string;
+}
+
+export enum WorkflowStateType {
+  PASS = 'Pass',
+  STACK = 'Stack',
+  SERIAL = 'Serial',
+  PARALLEL = 'Parallel',
+  CALL_SELF = 'CallSelf',
+}
+
+export interface WorkflowParallelBranch {
+  StartAt: string;
+  States: {
+    [name: string]: WorkflowState;
+  };
+}
+
+export const handler = async (event: WorkFlowInitialEvent): Promise<any> => {
   logger.info('Lambda is invoked', JSON.stringify(event, null, 2));
   try {
-    const eventData = event.MapRun? event.Data: event;
-    if (eventData.Type === 'Pass') {
-      await callback(eventData.Data as SfnStackEvent);
-      return eventData;
-    } else if (eventData.Type === 'Stack') {
-      const stack = eventData as WorkFlowStack;
-      return await stackParametersResolve(stack);
-    } else if (eventData.Type === 'Parallel') {
-      return {
-        Type: 'Parallel',
-        Data: eventData.Branches,
-      };
+    const curExecutionName = event.Data?.ExecutionName ?? '';
+    let originInput = event.Data?.Input?.value;
+
+    if (!originInput) {
+      throw new Error('Origin input is undefined.');
     }
 
-    const data = [];
-    let currentKey = eventData.StartAt;
-    let currentStep = eventData.States[currentKey];
-    while (true) {
-      currentStep.Name = currentKey;
-      data.push(currentStep);
-      if (currentStep.End) {
-        break;
-      }
-      currentKey = currentStep.Next;
-      currentStep = eventData.States[currentKey];
+    logger.info('originInput', { originInput });
+
+    if (originInput.Type === WorkflowStateType.CALL_SELF) {
+      originInput = (originInput as WorkflowCallSelfState).Data;
     }
-    return {
-      Type: 'Serial',
-      Data: data,
-    };
+
+    switch (originInput.Type) {
+      case 'Pass':
+        await callback(_pathExecutionName(originInput as WorkflowState, curExecutionName));
+        return event;
+      case 'Stack':
+        return await stackParametersResolve(_pathExecutionName(originInput as WorkflowState, curExecutionName));
+      case 'Parallel':
+        const branches = (originInput as WorkflowState).Branches;
+        if (!branches || branches.length === 0) {
+          throw new Error('Branches is undefined.');
+        }
+        if (branches.length === 1) {
+          return serial(branches[0], curExecutionName);
+        }
+        return {
+          Type: 'Parallel',
+          Data: _pathExecutionNameToBranches(branches, curExecutionName),
+        };
+      default:
+        const branch: WorkflowParallelBranch = {
+          States: (originInput as any).States,
+          StartAt: (originInput as any).StartAt,
+        };
+        return serial(branch, curExecutionName);
+    }
   } catch (err) {
     logger.error('Stack workflow input failed.', {
       error: err,
@@ -84,36 +129,46 @@ export const handler = async (event: any): Promise<any> => {
   }
 };
 
-export const callback = async (event: SfnStackEvent) => {
-  if (!event.Callback || !event.Callback.BucketName || !event.Callback.BucketPrefix) {
-    logger.error('Save runtime to S3 failed, Parameter error.', {
-      event: event,
-    });
-    throw new Error('Save runtime to S3 failed, Parameter error.');
+export const serial = (branch: WorkflowParallelBranch, executionName: string) => {
+  const states = branch.States;
+  const data: WorkflowState[] = [];
+  let currentKey = branch.StartAt;
+  let currentStep = states[currentKey];
+  while (true) {
+    if (!currentStep.ExecutionName || currentStep.ExecutionName === '') {
+      currentStep.ExecutionName = executionName;
+    }
+    data.push(currentStep);
+    if (currentStep.End || !currentStep.Next) {
+      break;
+    }
+    currentKey = currentStep.Next;
+    currentStep = states[currentKey];
   }
+  return {
+    Type: 'Serial',
+    Data: data,
+  };
+};
 
-  const stack = await describe(event.Input.Region, event.Input.StackName);
+export const callback = async (state: WorkflowState) => {
+  if (!callbackBucketName || !state.ExecutionName) {
+    throw new Error('Callback bucket name or execution name is undefined.');
+  }
+  if (!state.Data) {
+    throw new Error('Stack data is undefined.');
+  }
+  const stackData = state.Data;
+  const stack = await describe(stackData.Input.Region, stackData.Input.StackName);
   if (!stack) {
     throw Error('Describe Stack failed.');
   }
-
-  try {
-    const s3Client = new S3Client();
-    const input = {
-      Body: JSON.stringify({ [event.Input.StackName]: stack }),
-      Bucket: event.Callback.BucketName,
-      Key: `${event.Callback.BucketPrefix}/${event.Input.StackName}/output.json`,
-      ContentType: 'application/json',
-    };
-    const command = new PutObjectCommand(input);
-    await s3Client.send(command);
-  } catch (err) {
-    logger.error((err as Error).message, { error: err, event: event });
-    throw Error((err as Error).message);
-  }
-  return event;
+  await putObject(
+    callbackBucketName,
+    `${state.ExecutionName}/${stackData.Input.StackName}/output.json`,
+    JSON.stringify({ [stackData.Input.StackName]: stack }),
+  );
 };
-
 
 export const describe = async (region: string, stackName: string) => {
   try {
@@ -134,24 +189,28 @@ export const describe = async (region: string, stackName: string) => {
   }
 };
 
-async function stackParametersResolve(stack: WorkFlowStack) {
-  if (stack.Data.Callback.BucketName && stack.Data.Callback.BucketPrefix) {
-    const bucket = stack.Data.Callback.BucketName;
-    const prefix = stack.Data.Callback.BucketPrefix;
-    for (let param of stack.Data.Input.Parameters) {
-      let key = param.ParameterKey;
-      let value = param.ParameterValue;
-      // Find the value in output accurately through JSONPath
-      if (param.ParameterKey?.endsWith('.$') && param.ParameterValue?.startsWith('$.')) {
-        ({ key, value } = await _getParameterKeyAndValueByJSONPath(param.ParameterKey, param.ParameterValue, bucket, prefix));
-      } else if (param.ParameterKey?.endsWith('.#') && param.ParameterValue?.startsWith('#.')) { // Find the value in output by suffix
-        ({ key, value } = await _getParameterKeyAndValueByStackOutput(param.ParameterKey, param.ParameterValue, bucket, prefix));
-      }
-      param.ParameterKey = key;
-      param.ParameterValue = value;
-    }
+async function stackParametersResolve(state: WorkflowState) {
+  if (!state.Data) {
+    throw new Error('Stack data is undefined.');
   }
-  return stack;
+  if (!callbackBucketName || !state.ExecutionName) {
+    throw new Error('Callback bucket name or execution name is undefined.');
+  }
+  const prefix = state.ExecutionName;
+  for (let param of state.Data.Input.Parameters) {
+    let key = param.ParameterKey;
+    let value = param.ParameterValue;
+    // Find the value in output accurately through JSONPath
+    if (param.ParameterKey?.endsWith('.$') && param.ParameterValue?.startsWith('$.')) {
+      ({ key, value } = await _getParameterKeyAndValueByJSONPath(param.ParameterKey, param.ParameterValue, callbackBucketName, prefix));
+    } else if (param.ParameterKey?.endsWith('.#') && param.ParameterValue?.startsWith('#.')) { // Find the value in output by suffix
+      ({ key, value } = await _getParameterKeyAndValueByStackOutput(param.ParameterKey, param.ParameterValue, callbackBucketName, prefix));
+    }
+    param.ParameterKey = key;
+    param.ParameterValue = value;
+  }
+  state.Data.ExecutionName = state.ExecutionName;
+  return state;
 }
 
 async function _getParameterKeyAndValueByStackOutput(paramKey: string, paramValue: string, bucket: string, prefix: string) {
@@ -230,6 +289,42 @@ async function getObject(bucket: string, key: string) {
     const bodyContents = await streamToString(Body);
     return bodyContents;
   } catch (error) {
+    logger.error((error as Error).message, { error });
     return undefined;
   }
 }
+
+async function putObject(bucket: string, key: string, body: string) {
+  try {
+    const s3Client = new S3Client();
+    const input = {
+      Body: body,
+      Bucket: bucket,
+      Key: key,
+      ContentType: 'application/json',
+    };
+    const command = new PutObjectCommand(input);
+    await s3Client.send(command);
+  } catch (err) {
+    logger.error((err as Error).message, { error: err });
+    throw Error((err as Error).message);
+  }
+}
+
+function _pathExecutionName(state: WorkflowState, executionName: string) {
+  if (state.ExecutionName === undefined || executionName === '') {
+    state.ExecutionName = executionName;
+  }
+  return state;
+};
+
+function _pathExecutionNameToBranches(branches: WorkflowParallelBranch[], executionName: string) {
+  for (let branch of branches) {
+    for (let state of Object.values(branch.States)) {
+      if (state.ExecutionName === undefined || executionName === '') {
+        state.ExecutionName = executionName;
+      }
+    }
+  }
+  return branches;
+};

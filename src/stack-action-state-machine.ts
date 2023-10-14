@@ -16,14 +16,16 @@ import * as path from 'path';
 import * as defaults from '@aws-solutions-constructs/core';
 import { Aws, aws_lambda, Duration } from 'aws-cdk-lib';
 import { IVpc } from 'aws-cdk-lib/aws-ec2';
-import { Effect, Policy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Effect, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, IFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Choice, Condition, DefinitionBody, Pass, StateMachine, TaskInput, Wait, WaitTime } from 'aws-cdk-lib/aws-stepfunctions';
 import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
 
 export interface StackActionStateMachineProps {
+  readonly callbackBucket: Bucket;
   readonly vpc?: IVpc;
   readonly targetToCNRegions?: boolean;
   readonly policyStatementForRunStack?: PolicyStatement[];
@@ -47,19 +49,14 @@ export class StackActionStateMachine extends Construct {
     const builder = defaults.buildStateMachine(this, {
       definitionBody: DefinitionBody.fromChainable(startTask),
       tracingEnabled: true,
-      timeout: Duration.minutes(120),
+      timeout: Duration.hours(1),
     }, {});
     this.actionStateMachine = builder.stateMachine;
   }
 
   private _createActionFunction = (props: StackActionStateMachineProps) => {
-
-    const actionFunctionRole = new Role(this, 'ActionFunctionRole', {
-      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
-    });
-
     // Obtain Lambda function for construct
-    const lambdaFile = path.join(__dirname, './lambda/workflow/index');
+    const lambdaFile = path.join(__dirname, './lambda/action/index');
     const extension = fs.existsSync(lambdaFile + '.ts') ? '.ts' : '.js';
     const entry = `${lambdaFile}${extension}`;
     const nodejsFunc = new NodejsFunction(this, 'ActionFunction', {
@@ -68,15 +65,26 @@ export class StackActionStateMachine extends Construct {
       handler: 'handler',
       runtime: Runtime.NODEJS_18_X,
       tracing: aws_lambda.Tracing.ACTIVE,
-      role: actionFunctionRole,
       architecture: Architecture.X86_64,
       timeout: Duration.seconds(15),
+      environment: {
+        CALLBACK_BUCKET_NAME: props.callbackBucket.bucketName,
+      },
     });
     const func = defaults.buildLambdaFunction(this, {
       existingLambdaObj: nodejsFunc,
       vpc: props.vpc,
     });
-    this._attachPolicy(func, props.policyStatementForRunStack ?? []);
+    // If have additional policy statements, attach them to the function
+    // Otherwise, attach a admin policy to the function
+    this._attachPolicy(func, props.policyStatementForRunStack ?? [
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        resources: ['*'],
+        actions: ['*'],
+      }),
+    ]);
+    props.callbackBucket.grantReadWrite(func);
     return func;
   };
 

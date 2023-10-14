@@ -30,7 +30,7 @@ import {
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 const logger = new Logger();
-
+const callbackBucketName = process.env.CALLBACK_BUCKET_NAME;
 
 export enum StackAction {
   CREATE = 'Create',
@@ -42,14 +42,14 @@ export enum StackAction {
   END = 'End',
 }
 
-export interface SfnStackEvent {
+export interface StackEvent {
   readonly Action: StackAction;
-  readonly Input: SfnStackInput;
-  readonly Callback?: SfnStackCallback;
+  readonly Input: StackInput;
+  readonly ExecutionName: string;
   readonly Result?: Stack;
 }
 
-interface SfnStackInput {
+interface StackInput {
   readonly Region: string;
   readonly StackName: string;
   readonly TemplateURL: string;
@@ -57,12 +57,7 @@ interface SfnStackInput {
   readonly Tags?: Tag[];
 }
 
-interface SfnStackCallback {
-  readonly BucketName: string;
-  readonly BucketPrefix: string;
-}
-
-export const handler = async (event: SfnStackEvent, _context: any): Promise<any> => {
+export const handler = async (event: StackEvent, _context: any): Promise<any> => {
   logger.info('Lambda is invoked', JSON.stringify(event, null, 2));
   if (event.Action === StackAction.CREATE) {
     return createStack(event);
@@ -80,7 +75,7 @@ export const handler = async (event: SfnStackEvent, _context: any): Promise<any>
   throw Error('Action type error');
 };
 
-export const createStack = async (event: SfnStackEvent) => {
+export const createStack = async (event: StackEvent) => {
   try {
     const cloudFormationClient = new CloudFormationClient({
       region: event.Input.Region,
@@ -90,7 +85,7 @@ export const createStack = async (event: SfnStackEvent) => {
       TemplateURL: event.Input.TemplateURL,
       Parameters: event.Input.Parameters,
       DisableRollback: true,
-      EnableTerminationProtection: true,
+      EnableTerminationProtection: false,
       Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
       Tags: event.Input.Tags,
     });
@@ -98,21 +93,21 @@ export const createStack = async (event: SfnStackEvent) => {
     return {
       Action: StackAction.DESCRIBE,
       Input: event.Input,
-      Callback: event.Callback,
+      ExecutionName: event.ExecutionName,
       Result: {
         StackId: result.StackId,
         StackName: event.Input.StackName,
         StackStatus: StackStatus.CREATE_IN_PROGRESS,
         CreationTime: new Date(),
       } as Stack,
-    } as SfnStackEvent;
+    } as StackEvent;
   } catch (err) {
     logger.error((err as Error).message, { error: err, event: event });
     throw Error((err as Error).message);
   }
 };
 
-export const updateStack = async (event: SfnStackEvent) => {
+export const updateStack = async (event: StackEvent) => {
   try {
     const result = await doUpdate(event.Input.Region, {
       StackName: event.Input.StackName,
@@ -125,21 +120,21 @@ export const updateStack = async (event: SfnStackEvent) => {
     return {
       Action: StackAction.DESCRIBE,
       Input: event.Input,
-      Callback: event.Callback,
+      ExecutionName: event.ExecutionName,
       Result: {
         StackId: result.StackId,
         StackName: event.Input.StackName,
         StackStatus: StackStatus.UPDATE_IN_PROGRESS,
         CreationTime: new Date(),
       } as Stack,
-    } as SfnStackEvent;
+    } as StackEvent;
   } catch (err) {
     logger.error((err as Error).message, { error: err, event: event });
     throw Error((err as Error).message);
   }
 };
 
-export const upgradeStack = async (event: SfnStackEvent) => {
+export const upgradeStack = async (event: StackEvent) => {
   try {
     const result = await doUpdate(event.Input.Region, {
       StackName: event.Input.StackName,
@@ -153,21 +148,21 @@ export const upgradeStack = async (event: SfnStackEvent) => {
     return {
       Action: StackAction.DESCRIBE,
       Input: event.Input,
-      Callback: event.Callback,
+      ExecutionName: event.ExecutionName,
       Result: {
         StackId: result.StackId,
         StackName: event.Input.StackName,
         StackStatus: StackStatus.UPDATE_IN_PROGRESS,
         CreationTime: new Date(),
       } as Stack,
-    } as SfnStackEvent;
+    } as StackEvent;
   } catch (err) {
     logger.error((err as Error).message, { error: err, event: event });
     throw Error((err as Error).message);
   }
 };
 
-export const deleteStack = async (event: SfnStackEvent) => {
+export const deleteStack = async (event: StackEvent) => {
   try {
     const stackName = event.Result?.StackId ? event.Result?.StackId : event.Input.StackName;
     const stack = await describe(event.Input.Region, stackName);
@@ -176,7 +171,7 @@ export const deleteStack = async (event: SfnStackEvent) => {
       return {
         Action: StackAction.END,
         Input: event.Input,
-      } as SfnStackEvent;
+      } as StackEvent;
     }
 
     const cloudFormationClient = new CloudFormationClient({
@@ -194,21 +189,21 @@ export const deleteStack = async (event: SfnStackEvent) => {
     return {
       Action: StackAction.DESCRIBE,
       Input: event.Input,
-      Callback: event.Callback,
+      ExecutionName: event.ExecutionName,
       Result: {
         StackId: stack.StackId,
         StackName: event.Input.StackName,
         StackStatus: StackStatus.DELETE_IN_PROGRESS,
         CreationTime: new Date(),
       } as Stack,
-    } as SfnStackEvent;
+    } as StackEvent;
   } catch (err) {
     logger.error((err as Error).message, { error: err, event: event });
     throw Error((err as Error).message);
   }
 };
 
-export const describeStack = async (event: SfnStackEvent) => {
+export const describeStack = async (event: StackEvent) => {
   const stackName = event.Result?.StackId ? event.Result?.StackId : event.Input.StackName;
   const stack = await describe(event.Input.Region, stackName);
   if (!stack) {
@@ -218,16 +213,16 @@ export const describeStack = async (event: SfnStackEvent) => {
     return {
       Action: StackAction.DESCRIBE,
       Input: event.Input,
-      Callback: event.Callback,
+      ExecutionName: event.ExecutionName,
       Result: stack,
-    } as SfnStackEvent;
+    } as StackEvent;
   }
   return {
     Action: StackAction.CALLBACK,
     Input: event.Input,
-    Callback: event.Callback,
+    ExecutionName: event.ExecutionName,
     Result: stack,
-  } as SfnStackEvent;
+  } as StackEvent;
 };
 
 export const describe = async (region: string, stackName: string) => {
@@ -249,20 +244,23 @@ export const describe = async (region: string, stackName: string) => {
   }
 };
 
-export const callback = async (event: SfnStackEvent) => {
-  if (!event.Callback || !event.Callback.BucketName || !event.Callback.BucketPrefix || !event.Result) {
-    logger.error('Save runtime to S3 failed, Parameter error.', {
+export const callback = async (event: StackEvent) => {
+  if (!callbackBucketName || !event.ExecutionName) {
+    throw new Error('Callback bucket name or execution name is undefined.');
+  }
+  if (!event.Result) {
+    logger.error('Stack result is undefined.', {
       event: event,
     });
-    throw new Error('Save runtime to S3 failed, Parameter error.');
+    throw new Error('Stack result is undefined.');
   }
 
   try {
     const s3Client = new S3Client();
     const input = {
       Body: JSON.stringify({ [event.Input.StackName]: event.Result }),
-      Bucket: event.Callback.BucketName,
-      Key: `${event.Callback.BucketPrefix}/${event.Input.StackName}/output.json`,
+      Bucket: callbackBucketName,
+      Key: `${event.ExecutionName}/${event.Input.StackName}/output.json`,
       ContentType: 'application/json',
     };
     const command = new PutObjectCommand(input);

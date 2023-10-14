@@ -14,11 +14,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as defaults from '@aws-solutions-constructs/core';
-import { Aws, aws_lambda, Duration, Stack } from 'aws-cdk-lib';
+import { Aws, aws_lambda, CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { IVpc } from 'aws-cdk-lib/aws-ec2';
-import { Effect, Policy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Effect, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, IFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Choice, Condition, DefinitionBody, IntegrationPattern, IStateMachine, JsonPath, Pass, StateMachine, TaskInput, Map as SFNMap } from 'aws-cdk-lib/aws-stepfunctions';
 import { LambdaInvoke, StepFunctionsStartExecution } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
@@ -35,12 +36,21 @@ export class CSDCStackWorkflow extends Construct {
   public readonly actionStateMachine: StateMachine;
   public readonly workflowStateMachine: StateMachine;
   public readonly workflowFunction: NodejsFunction;
+  public readonly callbackBucket: Bucket;
 
   constructor(scope: Construct, id: string, props: CSDCStackWorkflowProps) {
     super(scope, id);
 
+    // Create S3 bucket for callback
+    this.callbackBucket = defaults.buildS3Bucket(this, {
+      bucketProps: {
+        bucketName: this._generatePhysicalName('stack-workflow-callback', 32),
+      },
+    }).bucket;
+
     // Create action state machine
     this.actionStateMachine = new StackActionStateMachine(this, 'ActionStateMachine', {
+      callbackBucket: this.callbackBucket,
       vpc: props.vpc,
       policyStatementForRunStack: props.policyStatementForRunStack,
     }).actionStateMachine;
@@ -49,22 +59,25 @@ export class CSDCStackWorkflow extends Construct {
     this.workflowFunction = this._createWorkflowFunction(this, props);
 
     // Define a chainable task to execute the workflow
-    const workflowMachineName = this._generatePhysicalName();
+    const workflowMachineName = this._generatePhysicalName('Workflow', 80);
     const workflowMachineNameArn = `arn:${Aws.PARTITION}:states:${Aws.REGION}:${Aws.ACCOUNT_ID}:stateMachine:${workflowMachineName}`;
     const startTask = this._chain(workflowMachineNameArn);
 
     // Define a state machine
     const builder = defaults.buildStateMachine(this, {
+      stateMachineName: workflowMachineName,
       definitionBody: DefinitionBody.fromChainable(startTask),
       tracingEnabled: true,
-      timeout: Duration.seconds(30),
+      timeout: Duration.hours(2),
     }, {});
     this.workflowStateMachine = builder.stateMachine;
+
+    this._output();
   }
 
-  private _generatePhysicalName = () => {
-    const maxNameLength = 80;
-    const namePrefix = 'StackWorkflow';
+  private _generatePhysicalName = (prefix: string, maxLength?: number) => {
+    const maxNameLength = maxLength ?? 64;
+    const namePrefix = prefix ?? 'PhysicalName';
     const maxGeneratedNameLength = maxNameLength - namePrefix.length;
     const nameParts: string[] = [
       Stack.of(this).stackName, // Name of the stack
@@ -74,11 +87,6 @@ export class CSDCStackWorkflow extends Construct {
   };
 
   private _createWorkflowFunction = (scope: Construct, props: CSDCStackWorkflowProps) => {
-
-    const workflowFunctionRole = new Role(scope, 'WorkflowFunctionRole', {
-      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
-    });
-
     // Obtain Lambda function for construct
     const lambdaFile = path.join(__dirname, './lambda/workflow/index');
     const extension = fs.existsSync(lambdaFile + '.ts') ? '.ts' : '.js';
@@ -89,15 +97,18 @@ export class CSDCStackWorkflow extends Construct {
       handler: 'handler',
       runtime: Runtime.NODEJS_18_X,
       tracing: aws_lambda.Tracing.ACTIVE,
-      role: workflowFunctionRole,
       architecture: Architecture.X86_64,
       timeout: Duration.seconds(15),
+      environment: {
+        CALLBACK_BUCKET_NAME: this.callbackBucket.bucketName,
+      },
     });
     const func = defaults.buildLambdaFunction(scope, {
       existingLambdaObj: nodejsFunc,
       vpc: props.vpc,
     });
     this._attachPolicy(func);
+    this.callbackBucket.grantReadWrite(func);
     return func;
   };
 
@@ -122,7 +133,13 @@ export class CSDCStackWorkflow extends Construct {
   private _chain = (workflowMachineNameArn: string) => {
     const inputTask = new LambdaInvoke(this, 'InputTask', {
       lambdaFunction: this.workflowFunction,
-      payload: TaskInput.fromJsonPathAt('$'),
+      payload: TaskInput.fromObject({
+        Type: 'Initial',
+        Data: {
+          ExecutionName: JsonPath.executionName,
+          Input: TaskInput.fromJsonPathAt('$'),
+        },
+      }),
       outputPath: '$.Payload',
     });
 
@@ -133,7 +150,7 @@ export class CSDCStackWorkflow extends Construct {
         Action: JsonPath.stringAt('$.Input.Action'),
         Token: JsonPath.taskToken,
         Input: JsonPath.stringAt('$.Input'),
-        Callback: JsonPath.stringAt('$.Callback'),
+        ExecutionName: JsonPath.stringAt('$.ExecutionName'),
       }),
     });
 
@@ -144,7 +161,7 @@ export class CSDCStackWorkflow extends Construct {
       integrationPattern: IntegrationPattern.RUN_JOB,
       input: TaskInput.fromObject({
         Token: JsonPath.taskToken,
-        MapRun: true,
+        Type: 'CallSelf',
         Data: JsonPath.stringAt('$'),
       }),
     });
@@ -156,7 +173,7 @@ export class CSDCStackWorkflow extends Construct {
       integrationPattern: IntegrationPattern.RUN_JOB,
       input: TaskInput.fromObject({
         Token: JsonPath.taskToken,
-        MapRun: true,
+        Type: 'CallSelf',
         Data: JsonPath.stringAt('$'),
       }),
     });
@@ -184,5 +201,23 @@ export class CSDCStackWorkflow extends Construct {
 
     inputTask.next(typeChoice);
     return inputTask;
+  };
+
+  private _output = () => {
+    new CfnOutput(this, 'WorkflowStateMachineArn', {
+      description: 'Workflow State Machine Arn',
+      value: this.workflowStateMachine.stateMachineArn,
+    }).overrideLogicalId('WorkflowStateMachineArn');
+
+    new CfnOutput(this, 'ActionStateMachineArn', {
+      description: 'Action State Machine Arn',
+      value: this.actionStateMachine.stateMachineArn,
+    }).overrideLogicalId('ActionStateMachineArn');
+
+    new CfnOutput(this, 'CallbackBucketName', {
+      description: 'Callback Bucket Name',
+      value: this.callbackBucket.bucketName,
+    }).overrideLogicalId('CallbackBucketName');
+
   };
 }
