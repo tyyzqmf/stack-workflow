@@ -27,7 +27,6 @@ import { StackActionStateMachine } from './stack-action-state-machine';
 
 export interface CSDCStackWorkflowProps {
   readonly vpc?: IVpc;
-  readonly targetToCNRegions?: boolean;
   readonly policyStatementForRunStack?: PolicyStatement[];
 }
 

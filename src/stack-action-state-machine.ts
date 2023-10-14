@@ -27,7 +27,6 @@ import { Construct } from 'constructs';
 export interface StackActionStateMachineProps {
   readonly callbackBucket: Bucket;
   readonly vpc?: IVpc;
-  readonly targetToCNRegions?: boolean;
   readonly policyStatementForRunStack?: PolicyStatement[];
 }
 
