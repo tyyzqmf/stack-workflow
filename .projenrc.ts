@@ -28,7 +28,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
     '*.ipr',
     '*.iws',
   ],
-  packageManager: NodePackageManager.PNPM,
+  packageManager: NodePackageManager.YARN,
 
   deps: [
     '@aws-solutions-constructs/core@^2.44.0',

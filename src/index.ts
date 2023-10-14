@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as defaults from '@aws-solutions-constructs/core';
-import { Aws, aws_lambda, CfnOutput, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
+import { Aws, aws_lambda, CfnOutput, Duration, Stack } from 'aws-cdk-lib';
 import { IVpc } from 'aws-cdk-lib/aws-ec2';
 import { Effect, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, IFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
