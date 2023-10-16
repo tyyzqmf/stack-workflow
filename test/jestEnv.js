@@ -11,10 +11,4 @@
  *  and limitations under the License.
  */
 
-import * as cdk from 'aws-cdk-lib';
-import { CSDCStackWorkflow } from './index';
-
-const app = new cdk.App();
-const stack = new cdk.Stack(app, 'MyStack');
-
-new CSDCStackWorkflow(stack, 'CSDC-Stack-Workflow', {});
+process.env.CALLBACK_BUCKET_NAME = 'EXAMPLE-BUCKET-1'

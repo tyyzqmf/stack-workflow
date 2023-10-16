@@ -39,6 +39,8 @@
     "@typescript-eslint/eslint-plugin": "^6",
     "@typescript-eslint/parser": "^6",
     "aws-cdk-lib": "2.100.0",
+    "aws-sdk-client-mock": "^2.1.1",
+    "aws-sdk-client-mock-jest": "^2.1.1",
     "constructs": "10.0.5",
     "eslint": "^8",
     "eslint-import-resolver-node": "^0.3.9",
@@ -66,17 +68,24 @@
     "@aws-sdk/client-cloudformation": "^3.405.0",
     "@aws-sdk/client-s3": "^3.405.0",
     "@aws-solutions-constructs/core": "^2.44.0",
+    "@smithy/util-stream-node": "^2.0.7",
+    "@types/aws-lambda": "^8.10.110",
+    "aws-sdk-client-mock": "^2.1.1",
+    "aws-sdk-client-mock-jest": "^2.1.1",
     "jsonpath-plus": "^7.2.0"
   },
   "bundledDependencies": [
     "@aws-lambda-powertools/logger",
     "@aws-sdk/client-cloudformation",
     "@aws-sdk/client-s3",
+    "@smithy/util-stream-node",
+    "@types/aws-lambda",
+    "aws-sdk-client-mock",
+    "aws-sdk-client-mock-jest",
     "jsonpath-plus"
   ],
   "keywords": [
     "AWS CloudFormation",
-    "AWS Solutions Constructs",
     "AWS Step Functions",
     "aws",
     "awscdk",
@@ -86,9 +95,12 @@
     "node": ">= 18.17.0"
   },
   "main": "lib/index.js",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "version": "0.0.0",
   "jest": {
+    "setupFiles": [
+      "./test/jestEnv.js"
+    ],
     "testMatch": [
       "<rootDir>/src/**/__tests__/**/*.ts?(x)",
       "<rootDir>/(test|src)/**/*(*.)@(spec|test).ts?(x)"

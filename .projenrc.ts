@@ -1,5 +1,4 @@
 import { awscdk } from 'projen';
-import { NodePackageManager } from 'projen/lib/javascript/node-package';
 
 const cdkVersion = '2.100.0';
 const minNodeVersion = '18.17.0';
@@ -12,7 +11,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   jsiiVersion: '~5.0.0',
   name: 'stack-workflow',
   description: 'A CDK construct library that creates a workflow to run stacks',
-  license: 'Apache-2.0',
+  license: 'MIT',
   projenrcTs: true,
   repositoryUrl: 'https://github.com/tyyzqmf/stack-workflow.git',
   mergify: true,
@@ -28,31 +27,42 @@ const project = new awscdk.AwsCdkConstructLibrary({
     '*.ipr',
     '*.iws',
   ],
-  packageManager: NodePackageManager.YARN,
-
   deps: [
+    '@types/aws-lambda@^8.10.110',
     '@aws-solutions-constructs/core@^2.44.0',
     '@aws-sdk/client-cloudformation@^3.405.0',
     '@aws-sdk/client-s3@^3.405.0',
     '@aws-lambda-powertools/logger@^1.14.0',
+    '@smithy/util-stream-node@^2.0.7',
     'jsonpath-plus@^7.2.0',
   ], /* Runtime dependencies of this module. */
   // description: undefined,  /* The description is just a string that helps people understand the purpose of the package. */
-  // devDeps: [],             /* Build dependencies for this module. */
+  devDeps: [
+    'aws-sdk-client-mock@^2.1.1',
+    'aws-sdk-client-mock-jest@^2.1.1',
+  ], /* Build dependencies for this module. */
   // packageName: undefined,  /* The "name" in package.json. */
   bundledDeps: [
+    '@types/aws-lambda',
     '@aws-sdk/client-cloudformation',
     '@aws-sdk/client-s3',
     '@aws-lambda-powertools/logger',
+    '@smithy/util-stream-node',
     'jsonpath-plus',
+    'aws-sdk-client-mock',
+    'aws-sdk-client-mock-jest',
   ],
   keywords: [
     'aws',
     'cdk',
     'awscdk',
-    'AWS Solutions Constructs',
     'AWS Step Functions',
     'AWS CloudFormation',
   ],
+  jestOptions: {
+    jestConfig: {
+      setupFiles: ['./test/jestEnv.js'],
+    },
+  },
 });
 project.synth();

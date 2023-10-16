@@ -25,7 +25,7 @@ export enum WorkFlowEventType {
 }
 
 export interface WorkFlowInitialEvent {
-  Type: WorkFlowEventType;
+  readonly Type: WorkFlowEventType;
   readonly Data: {
     readonly ExecutionName: string;
     readonly Input: {
@@ -35,7 +35,7 @@ export interface WorkFlowInitialEvent {
 }
 
 export interface StackData {
-  ExecutionName: string;
+  ExecutionName?: string;
   Input: {
     Region: string;
     Action: string;
@@ -47,11 +47,11 @@ export interface StackData {
 }
 
 export interface WorkflowOriginInput {
-  Type: WorkflowStateType;
+  readonly Type: WorkflowStateType;
 }
 
 export interface WorkflowState extends WorkflowOriginInput {
-  ExecutionName: string;
+  ExecutionName?: string;
   Data?: StackData;
   Branches?: WorkflowParallelBranch[];
   End?: boolean;
@@ -98,7 +98,7 @@ export const handler = async (event: WorkFlowInitialEvent): Promise<any> => {
     switch (originInput.Type) {
       case 'Pass':
         await callback(_pathExecutionName(originInput as WorkflowState, curExecutionName));
-        return event;
+        return event.Data?.Input?.value;
       case 'Stack':
         return await stackParametersResolve(_pathExecutionName(originInput as WorkflowState, curExecutionName));
       case 'Parallel':
