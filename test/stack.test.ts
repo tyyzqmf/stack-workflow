@@ -19,7 +19,7 @@ describe('Stack Test', () => {
 
   const app = new cdk.App();
   const stack = new cdk.Stack(app, 'TestStack');
-  new CSDCStackWorkflow(stack, 'MyTestConstruct', {});
+  new CSDCStackWorkflow(stack, 'MyTestConstruct');
   const template = Template.fromStack(stack);
 
   test('Resources Count', () => {

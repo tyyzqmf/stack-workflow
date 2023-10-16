@@ -15,7 +15,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as defaults from '@aws-solutions-constructs/core';
 import { Aws, aws_lambda, Duration } from 'aws-cdk-lib';
-import { IVpc } from 'aws-cdk-lib/aws-ec2';
 import { Effect, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, IFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -26,7 +25,6 @@ import { Construct } from 'constructs';
 
 export interface StackActionStateMachineProps {
   readonly callbackBucket: Bucket;
-  readonly vpc?: IVpc;
   readonly policyStatementForRunStack?: PolicyStatement[];
 }
 
@@ -72,7 +70,6 @@ export class StackActionStateMachine extends Construct {
     });
     const func = defaults.buildLambdaFunction(this, {
       existingLambdaObj: nodejsFunc,
-      vpc: props.vpc,
     });
     // If have additional policy statements, attach them to the function
     // Otherwise, attach a admin policy to the function

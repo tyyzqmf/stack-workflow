@@ -15,7 +15,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as defaults from '@aws-solutions-constructs/core';
 import { Aws, aws_lambda, CfnOutput, Duration, Stack } from 'aws-cdk-lib';
-import { IVpc } from 'aws-cdk-lib/aws-ec2';
 import { Effect, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, IFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -26,7 +25,6 @@ import { Construct } from 'constructs';
 import { StackActionStateMachine } from './stack-action-state-machine';
 
 export interface CSDCStackWorkflowProps {
-  readonly vpc?: IVpc;
   readonly policyStatementForRunStack?: PolicyStatement[];
 }
 
@@ -37,7 +35,7 @@ export class CSDCStackWorkflow extends Construct {
   public readonly workflowFunction: NodejsFunction;
   public readonly callbackBucket: Bucket;
 
-  constructor(scope: Construct, id: string, props: CSDCStackWorkflowProps) {
+  constructor(scope: Construct, id: string, props?: CSDCStackWorkflowProps) {
     super(scope, id);
 
     // Create S3 bucket for callback
@@ -50,12 +48,11 @@ export class CSDCStackWorkflow extends Construct {
     // Create action state machine
     this.actionStateMachine = new StackActionStateMachine(this, 'ActionStateMachine', {
       callbackBucket: this.callbackBucket,
-      vpc: props.vpc,
-      policyStatementForRunStack: props.policyStatementForRunStack,
+      policyStatementForRunStack: props?.policyStatementForRunStack,
     }).actionStateMachine;
 
     // Create Lambda function for workflow state machine
-    this.workflowFunction = this._createWorkflowFunction(this, props);
+    this.workflowFunction = this._createWorkflowFunction();
 
     // Define a chainable task to execute the workflow
     const workflowMachineName = this._generatePhysicalName('Workflow', 80);
@@ -85,7 +82,7 @@ export class CSDCStackWorkflow extends Construct {
     return defaults.generatePhysicalName(namePrefix, nameParts, maxGeneratedNameLength);
   };
 
-  private _createWorkflowFunction = (scope: Construct, props: CSDCStackWorkflowProps) => {
+  private _createWorkflowFunction = () => {
     // Obtain Lambda function for construct
     const lambdaFile = path.join(__dirname, './lambda/workflow/index');
     const extension = fs.existsSync(lambdaFile + '.ts') ? '.ts' : '.js';
@@ -102,9 +99,8 @@ export class CSDCStackWorkflow extends Construct {
         CALLBACK_BUCKET_NAME: this.callbackBucket.bucketName,
       },
     });
-    const func = defaults.buildLambdaFunction(scope, {
+    const func = defaults.buildLambdaFunction(this, {
       existingLambdaObj: nodejsFunc,
-      vpc: props.vpc,
     });
     this._attachPolicy(func);
     this.callbackBucket.grantReadWrite(func);
