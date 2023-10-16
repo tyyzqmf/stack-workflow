@@ -7,7 +7,7 @@ Here is a minimal deployable pattern definition:
 
 **Typescript**
 
-```
+```ts
 import { Construct } from 'constructs';
 import { Stack, StackProps } from 'aws-cdk-lib';
 import { CSDCStackWorkflow } from 'stack-workflow';
@@ -20,11 +20,11 @@ new CSDCStackWorkflow(this, 'test-stack-workflow');
 ### Preparations
 
 - Make sure you have an AWS account
-- Configure [credential of aws cli][configure-aws-cli]
+- Configure [credential of aws cli](https://docs.aws.amazon.com/zh_cn/cli/latest/userguide/cli-chap-configure.html)
 - Install Node.js LTS version 18.17.0 or later
 - Install Docker Engine
 - Install the dependencies of the solution by executing the command `yarn install --check-files && npx projen`
-- Initialize the CDK toolkit stack into AWS environment (only for deploying via [AWS CDK][aws-cdk] for the first time), and run `npx cdk bootstrap`
+- Initialize the CDK toolkit stack into AWS environment (only for deploying via [AWS CDK](https://aws.amazon.com/cdk/) for the first time), and run `npx cdk bootstrap`
 
 ### Deploy the construct
 
@@ -68,4 +68,4 @@ This project is licensed under the Apache-2.0 License.
 
 ## Acknowledgements
 
-This project utilizes [projen](https://github.com/projen/projen) (_star it on GitHub_).
+This project utilizes [projen](https://github.com/projen/projen).
