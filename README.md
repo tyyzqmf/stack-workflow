@@ -41,12 +41,12 @@ yarn test
 ## Getting Started
 
 After creating the Stack, you can see the following output:
+|  Key   | Value  | Description  |
+|  ----  | ----  | ----  |
+|  WorkflowStateMachineArn | `arn:aws:states:ap-southeast-1:*:stateMachine:<workflow-state-machine-name>` | Workflow State Machine Arn |
+|  ActionStateMachineArn | `arn:aws:states:ap-southeast-1:*:stateMachine:<action-state-machine-name>` | Action State Machine Arn |
+|  CallbackBucketName | `stack-workflow-callback-xxx` | Callback Bucket Name |
 
-｜Key｜Value｜Description｜
-｜----｜----｜----｜
-｜ WorkflowStateMachineArn ｜ arn:aws:states:ap-southeast-1:*:stateMachine:<workflow-state-machine-name> ｜ Workflow State Machine Arn ｜
-｜ ActionStateMachineArn ｜ arn:aws:states:ap-southeast-1:*:stateMachine:<action-state-machine-name> ｜ Action State Machine Arn ｜
-｜ CallbackBucketName ｜ stack-workflow-callback-xxx ｜ Callback Bucket Name ｜
 
 Access the AWS Step Functions console, select the workflow state machine, click the **Start Execution** button, and enter the following JSON data to complete the tasks.
 
