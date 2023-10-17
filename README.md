@@ -41,6 +41,8 @@ yarn test
 ## Getting Started
 
 After creating the Stack, you can see the following output:
+
+｜Key｜Value｜Description｜
 ｜----｜----｜----｜
 ｜ WorkflowStateMachineArn ｜ arn:aws:states:ap-southeast-1:*:stateMachine:<workflow-state-machine-name> ｜ Workflow State Machine Arn ｜
 ｜ ActionStateMachineArn ｜ arn:aws:states:ap-southeast-1:*:stateMachine:<action-state-machine-name> ｜ Action State Machine Arn ｜
